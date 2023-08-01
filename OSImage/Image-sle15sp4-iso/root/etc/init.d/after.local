@@ -1,0 +1,40 @@
+#!/bin/bash
+SM_SERVER=proxyall.susedemo.com
+REGISTRATION_KEY=9-sles15sp4
+SALT_MINION_CONF_DIR="/etc/venv-salt-minion/minion.d"
+SALT_MINION_SERVICE="venv-salt-minion"
+SALT_MINION_DIR="/etc/venv-salt-minion"
+HOSTNAME_PREFIX=inditex
+
+
+curl -skS https://$SM_SERVER/pub/RHN-ORG-TRUSTED-SSL-CERT --output /etc/pki/trust/anchors/RHN-ORG-TRUSTED-SSL-CERT
+update-ca-certificates
+
+# Remove existing machine-id
+rm -f /etc/machine-id \
+      /var/lib/zypp/AnonymousUniqueId \
+      /var/lib/systemd/random-seed \
+      /var/lib/dbus/machine-id
+
+#======================================
+# Add machine-id
+#======================================
+dbus-uuidgen --ensure
+systemd-machine-id-setup
+
+
+rm $SALT_MINION_CONF_DIR/minion_id
+hostset=`hostname -I | cut -f1 -d' '| sed s/\[.]/-/g` && hostnamectl set-hostname $HOSTNAME_PREFIX-$hostset
+hostname > $SALT_MINION_DIR/minion_id
+echo "master: $SM_SERVER" > $SALT_MINION_CONF_DIR/susemanager.conf
+echo "server_id_use_src: adler42" >> $SALT_MINION_CONF_DIR/susemanager.conf
+echo "enable_legacy_startup_events: False" >> $SALT_MINION_CONF_DIR/susemanager.conf
+echo "enable_fqdns_grains: False" >> $SALT_MINION_CONF_DIR/susemanager.conf
+echo "grains:" >> $SALT_MINION_CONF_DIR/susemanager.conf
+echo "  susemanager:" >> $SALT_MINION_CONF_DIR/susemanager.conf
+echo "    activation_key: $REGISTRATION_KEY" >> $SALT_MINION_CONF_DIR/susemanager.conf
+systemctl enable $SALT_MINION_SERVICE
+systemctl stop $SALT_MINION_SERVICE
+systemctl start $SALT_MINION_SERVICE
+touch /tmp/completed-after-local
+chmod -x /etc/init.d/after.local
